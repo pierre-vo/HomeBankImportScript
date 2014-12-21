@@ -480,8 +480,8 @@ class HomeBankDataWriter:
                     except BaseException, e:
                         logger.error('!!! {} - {}'.format(e, l))
         except IOError:
-            logger.error('! Impossible d\'ouvrir le fichier csv,'
-                         ' est-il deja ouvert dans Excel ?')
+            logger.error('! Cannot open the file,'
+                         ' could it be opened in Excel ?')
             logger.error('! {}'.format(out_file))
         logger.info('=> Exported {} entries to {}.'.format(cnt, out_file))
 
