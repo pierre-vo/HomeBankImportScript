@@ -15,6 +15,7 @@
 # Todo: fix unicode issues with french and german characters
 
 from __future__ import absolute_import
+from __future__ import unicode_literals  # all strings in this file are unicode
 
 # import sys
 import os
@@ -22,17 +23,18 @@ import logging
 import re
 import time
 import csv
-import codecs
 import json
 import tempfile
 import argparse
 from os.path import isfile, join
 
+from codecs import open  # to specify encoding
+
+
 logging.basicConfig(level=logging.DEBUG,
                     format='[%(levelname)-5s] %(message)s',
                     datefmt='%M:%S')
 logger = logging.getLogger(__name__)
-
 
 # Payment modes handled by HomeBank (csv codes)
 PAYMODES = ["None",  # 0
@@ -65,49 +67,6 @@ def listExtFromDir(ext, in_dir):
     return file_l
 
 
-class Recoder(object):
-    """ For utf-8 to utf-16 conversion (no need for python3 """
-    """ Taken from Stack overflow, forgot too copy the link """
-    def __init__(self, stream, decoder, encoder, eol='\r\n'):
-        self._stream = stream
-        self._decoder = decoder if isinstance(decoder,
-                                              codecs.IncrementalDecoder) \
-                                else codecs.getincrementaldecoder(decoder)()
-        self._encoder = encoder if isinstance(encoder,
-                                              codecs.IncrementalEncoder) \
-                                else codecs.getincrementalencoder(encoder)()
-        self._buf = ''
-        self._eol = eol
-        self._reachedEof = False
-
-    def read(self, size=None):
-        r = self._stream.read(size)
-        raw = self._decoder.decode(r, size is None)
-        return self._encoder.encode(raw)
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        if self._reachedEof:
-            raise StopIteration()
-        while True:
-            line, eol, rest = self._buf.partition(self._eol)
-            if eol == self._eol:
-                self._buf = rest
-                return self._encoder.encode(line + eol)
-            raw = self._stream.read(1024)
-            if raw == '':
-                self._decoder.decode(b'', True)
-                self._reachedEof = True
-                return self._encoder.encode(self._buf)
-            self._buf += self._decoder.decode(raw)
-    next = __next__
-
-    def close(self):
-        return self._stream.close()
-
-
 class boursorama_qif_file:
     """ Handles the QIF files from boursorama output
     Data representation of internal dict is messy... """
@@ -126,8 +85,8 @@ class boursorama_qif_file:
             fbuff = fid.read()
 
         # Replace weird chars
-        fbuff = re.sub(u"\u007B", u"\xe9", fbuff)
-        fbuff = re.sub(u"\u00C2\u00A0", "", fbuff)
+#         fbuff = re.sub(u"\u007B", u"\xe9", fbuff)
+#         fbuff = re.sub(u"\u00C2\u00A0", "", fbuff)
 
         op_l = fbuff.split('^')
         self.op_d = self.read_op_l(op_l)
@@ -152,7 +111,7 @@ class boursorama_qif_file:
         return out_d
 
     def read_op(self, op_l):
-        logger.debug('\t* {}'.format(op_l.replace('\n', '\t|')))
+#         logger.debug('\t* {}'.format(op_l.replace('\n', '\t|')))
         op_d = {}
         l = op_l.split('\n')
 
@@ -168,7 +127,7 @@ class boursorama_qif_file:
                     logger.error('! Categorie non prise en'
                                  ' charge: {}'.format(item))
 
-        logger.debug('\t  => {}'.format(op_d))
+#         logger.debug('\t  => {}'.format(op_d))
         return op_d
 
     def process_op(self):
@@ -265,15 +224,15 @@ class ING_DiBa_csv_file:
     def open_csv(self):
         logger.info('* opening {}'.format(self.in_file))
         # remove header from csv file
-        with open(self.in_file, 'rb') as fid:
+        with open(self.in_file, 'rb', encoding="cp1252") as fid:
             fbuff = fid.read()
 
         fbuff = fbuff[fbuff.find("Buchung"):]
         # Replace weird chars
-        fbuff = re.sub(u"\u007B", u"\xe9", fbuff)
-        fbuff = re.sub(u"\u00C2\u00A0", "", fbuff)
-        fbuff = re.sub(u"\xE4", "a", fbuff)
-        fbuff = re.sub(u"\xDC", "U", fbuff)
+#         fbuff = re.sub(u"\u007B", u"\xe9", fbuff)
+#         fbuff = re.sub(u"\u00C2\u00A0", "", fbuff)
+#         fbuff = re.sub(u"\xE4", "a", fbuff)
+#         fbuff = re.sub(u"\xDC", "U", fbuff)
 
         # save temp csv file to process
         fid = tempfile.NamedTemporaryFile(delete=False)
@@ -281,7 +240,8 @@ class ING_DiBa_csv_file:
         fid.close()
 
         with open(fid.name, 'rb') as csvfile:
-            csvr = csv.reader(csvfile, delimiter=';', quotechar='"')
+            csvr = csv.reader(csvfile, delimiter=';'.encode('ascii'),
+                              quotechar='"'.encode('ascii'))
 
             for row in csvr:
                 if self.headerline is None:
@@ -322,10 +282,10 @@ class ING_DiBa_csv_file:
         # HB fields: date, paymode, info, payee, memo, amount, category, tags
         for item in self.op_d:
             sub_d = {'date': time.strftime('%m/%d/%Y',
-                                   time.gmtime(self.op_d[item]['Buchung'])),
+                                   time.localtime(self.op_d[item]['Buchung'])),
                      'paymode': PAYMODES.index("None"),
                      'info': None,
-                     'payee': self.op_d[item]['Auftraggeber/Empfanger'],
+                     'payee': self.op_d[item]['Auftraggeber/Empfänger'],
                      'memo': self.op_d[item]['Verwendungszweck'],
                      'amount': self.op_d[item]['Betrag'],
                      'category': None,
@@ -333,7 +293,7 @@ class ING_DiBa_csv_file:
 
             conv = {'Lastschrifteinzug': PAYMODES.index("Credit Card"),
                     'Uberweisung': PAYMODES.index("Transfer"),
-                    'Gutschrift': PAYMODES.index("Internal Transfer"),
+                    'Gutschrift': PAYMODES.index("Transfer"),  # 5 = problem?
                     'Gutschrift aus Dauerauftrag': PAYMODES.index("Transfer"),
                     'Dauerauftrag/Terminueberweisung': PAYMODES.\
                                                             index("Transfer"),
@@ -355,9 +315,8 @@ class linox_csv_file:
 
     def open_csv(self):
         logger.info('* opening {}'.format(self.in_file))
-        with open(self.in_file, 'rb') as f:
-            sr = Recoder(f, 'utf-16', 'utf-8')
-            for row in csv.reader(sr, delimiter='\t'):
+        with open(self.in_file, 'rb', encoding='utf-16') as f:
+            for row in csv.reader(f, delimiter='\t'.encode('ascii')):
                 if self.headerline == None:
                     self.headerline = row
                     logger.debug('=> {} elements in header.'\
@@ -460,6 +419,8 @@ class HomeBankDataWriter:
                 dic_l = ['date', 'paymode', 'info', 'payee', 'memo',
                          'amount', 'category', 'tags']
 
+                # .encode("codec") should be applied to str before writing
+                # need to determing code expected by homebank
                 fid.write(';'.join(head_l))
                 fid.write('\n')
 
@@ -534,6 +495,7 @@ def main():
     p.add_argument('-i', '--input', help="input file")
     types = filetypes.keys()
     p.add_argument('-t', '--type', choices=types, help="Type of the file")
+    # sys.getfilesystemencoding()
 
     args = p.parse_args()
     print args
