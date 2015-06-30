@@ -17,7 +17,7 @@
 from __future__ import absolute_import
 from __future__ import unicode_literals  # all strings in this file are unicode
 
-# import sys
+import sys
 import os
 import logging
 import re
@@ -28,12 +28,8 @@ import tempfile
 import argparse
 from os.path import isfile, join
 
-from codecs import open  # to specify encoding
+from codecs import open
 
-
-logging.basicConfig(level=logging.DEBUG,
-                    format='[%(levelname)-5s] %(message)s',
-                    datefmt='%M:%S')
 logger = logging.getLogger(__name__)
 
 # Payment modes handled by HomeBank (csv codes)
@@ -52,6 +48,7 @@ PAYMODES = ["None",  # 0
 # for automatic detection of files in "In" directory and automatic processing
 filetypes = {'INGDiba_csv': r'Umsatzanzeige_[0-9]{10}_[0-9]{8}.*.csv',
              'Boursorama_qif': r'[0-9]{11}_Q[0-9]{8}.*.qif',
+             'Boursorama_quick2000': r'[0-9]{11}_R[0-9]{8}.*.qif',
              'Linxo_csv': r'op\xe9rations.csv'
              }
 
@@ -236,12 +233,12 @@ class ING_DiBa_csv_file:
 
         # save temp csv file to process
         fid = tempfile.NamedTemporaryFile(delete=False)
-        fid.write(fbuff)
+        fid.write(fbuff.encode('utf8'))
         fid.close()
 
         with open(fid.name, 'rb') as csvfile:
-            csvr = csv.reader(csvfile, delimiter=';'.encode('ascii'),
-                              quotechar='"'.encode('ascii'))
+            csvr = csv.reader(csvfile, delimiter=';'.encode('utf8'),
+                              quotechar='"'.encode('utf8'))
 
             for row in csvr:
                 if self.headerline is None:
@@ -250,7 +247,8 @@ class ING_DiBa_csv_file:
                                  .format(len(self.headerline)))
                     # clean header
                     for idx in range(len(self.headerline)):
-                        self.headerline[idx] = self.headerline[idx].rstrip('"')
+                        self.headerline[idx] = self.headerline[idx].decode('utf-8').rstrip('"')
+                        logger.info(self.headerline[idx])
                 else:
                     self.read_op_l(row)
         os.unlink(fid.name)
@@ -269,7 +267,7 @@ class ING_DiBa_csv_file:
                                     .replace('"', '').rstrip(' ')\
                                     .replace('.', '').replace(',', '.'))
             else:
-                sub_d[item] = op_l[self.headerline.index(item)].rstrip(' ')
+                sub_d[item] = op_l[self.headerline.index(item)].decode('utf-8').rstrip(' ')
 
         key = sub_d["Buchung"]
         # make sure we have no duplicated keys in the dict
@@ -404,10 +402,10 @@ class HomeBankDataWriter:
 
     def write_op(self, fid, op_d):
         ''' Write QIF operation '''
-        fid.write('D{}\n'.format(op_d['date']))
-        fid.write('T{}\n'.format(op_d['amount']))
-        fid.write('P{}\n'.format(op_d['payee']))
-        fid.write('M{}\n'.format(op_d['memo']))
+        fid.write('D{}\n'.format(op_d['date']).encode('utf8'))
+        fid.write('T{}\n'.format(op_d['amount']).encode('utf8'))
+        fid.write('P{}\n'.format(op_d['payee']).encode('utf8'))
+        fid.write('M{}\n'.format(op_d['memo']).encode('utf8'))
 
     def export_csv(self, out_file):
         cnt = 0
@@ -427,13 +425,20 @@ class HomeBankDataWriter:
                 for key in sorted(self.op_d.keys()):
                     l = []
                     for item in dic_l:
-                        t = type(self.op_d[key][item])
+                        t = self.op_d[key][item]
                         if self.op_d[key][item] == None:
                             l.append('')
-                        elif t in ['int', 'float']:
+                        elif (isinstance(t, int) or isinstance(t, float)):
                             l.append(str(self.op_d[key][item]))
+                        elif isinstance(t, unicode):
+                            l.append(self.op_d[key][item])
+                        elif isinstance(t, str):
+                            l.append(self.op_d[key][item].decode('utf-8'))
                         else:
-                            l.append(str(self.op_d[key][item]))
+                            logger.error('!!! Type of element appended not defined => will cause trouble')
+                            logger.error('!!! Type: {} ({})'.format(type(t), t))
+                            l.append(self.op_d[key][item])
+                    logger.info(l)
                     try:
                         fid.write(';'.join(l))
                         fid.write('\n')
@@ -491,6 +496,10 @@ def main_no_args():
 
 
 def main():
+    logging.basicConfig(level=logging.DEBUG,
+                        format='[%(levelname)-5s] %(lineno)s - %(message)s',
+                        datefmt='%M:%S')
+
     p = argparse.ArgumentParser()
     p.add_argument('-i', '--input', help="input file")
     types = filetypes.keys()
