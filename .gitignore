@@ -56,3 +56,6 @@ target/
 # Test files
 In/
 Out/
+*.qif
+*.csv
+*.ofx
