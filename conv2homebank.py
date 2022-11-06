@@ -54,8 +54,8 @@ filetypes = {'INGDiba_csv': r'Umsatzanzeige_[0-9]{10}_[0-9]{8}.*.csv',
 
 
 def dispdic(in_d):
-    print json.dumps(in_d, sort_keys=True,
-                     indent=4, separators=(',', ': '))
+    print(json.dumps(in_d, sort_keys=True,
+                     indent=4, separators=(',', ': ')))
 
 
 def listExtFromDir(ext, in_dir):
@@ -507,7 +507,7 @@ def main():
     # sys.getfilesystemencoding()
 
     args = p.parse_args()
-    print args
+    print(args)
 
     if args.input == None:
         logger.info('* No arguments, attempting to automatically process "In"')
